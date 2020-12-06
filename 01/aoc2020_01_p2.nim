@@ -14,22 +14,19 @@
 
 import streams
 import strformat
-import parseutils
+import sequtils
+import strutils
 
 
 const input_filename = "input.txt"
 
-## parse the file into an array
 
 proc parseInput(filename: string): seq[uint] =
-    result = @[]
     var strm = newFileStream(filename, fmRead)
-    var line = ""
     if not isNil(strm):
-        var num: uint
-        while strm.readLine(line):
-            discard parseUInt(line, num)
-            result.add(num)
+        result = toSeq(strm.lines).filterIt(it.len > 0).map(parseUInt)
+        strm.close()
+
 
 func findEntries(expreport: var seq[uint]): (uint, uint, uint) =
     while expreport.len > 0:

@@ -101,15 +101,31 @@ func countAdjacent(s: SimState, index: int, es: EState = occupied): int =
         es = s.field[y * s.width + x]
         true
     let
-        x = index mod s.width
-        y = index div s.width
+        # position of index in field, does not change in this function call
+        xi = index mod s.width
+        yi = index div s.width
+    var
+        # x and y coordinates of current lookup, used to iterate
+        x, y: int
+        lookup_state: EState
     for dx in [-1, 0, 1]:
         for dy in [-1, 0, 1]:
             if dx == 0 and dy == 0:
                 continue
-            var lookup_state: EState
-            if lookup(x + dx, y + dy, lookup_state):
-                if lookup_state == es: result.inc
+            x = xi; y = yi
+            while true:
+                x += dx; y += dy
+                if not lookup(x, y, lookup_state):
+                    # reached field limit
+                    break
+                if lookup_state == empty:
+                    # found an empty seat, don't look beyond it
+                    break
+                if lookup_state == occupied:
+                    # found occupied seat, count it
+                    result.inc
+                    break
+
 
 
 func applyRules(s: SimState): SimState =
@@ -124,7 +140,7 @@ func applyRules(s: SimState): SimState =
                 of empty:
                     if c == 0: occupied else: empty
                 of occupied:
-                    if c >= 4: empty else: occupied
+                    if c >= 5: empty else: occupied
                 else: f
         )
         if result.field[i] != s.field[i]: result.changed.inc
@@ -136,10 +152,12 @@ if isMainModule:
     var state = parseInput()
     printState(state)
     echo fmt"starting state"
-    while true:
+    var max_iter = 100
+    while max_iter > 0:
         let new_state = applyRules(state)
         printState(new_state)
         echo fmt"iteration {new_state.iteration}, changed {new_state.changed}, {new_state.occupied} occupied"
         if new_state.changed == 0:
             break
         state = new_state
+        max_iter.dec

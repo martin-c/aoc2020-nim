@@ -21,7 +21,7 @@ import strutils
 
 
 type
-    # that state of each element in the field/grid
+    # the state of each element in the field/grid
     EState = enum
         empty, occupied, keepout
 
@@ -59,7 +59,7 @@ proc parseInput(filename: string = input_filename): SimState =
                 result.width = line.len
             else:
                 assert line.len == result.width
-            for i, c in line.pairs:
+            for c in line.items:
                 result.field.add(block:
                     case c:
                         of 'L': empty
@@ -93,26 +93,23 @@ proc printState(s: SimState) =
 
 func countAdjacent(s: SimState, index: int, es: EState = occupied): int =
     ## count the elements in `es` adjacent to element `index`
-    # check elements clockwise starting from 12 'oclock
-    if index > s.width:
-        if s.field[index - s.width] == es: result.inc
-    if index > s.width and (index + 1) mod s.width != 0:
-        if s.field[index - s.width + 1] == es: result.inc
-    # 3 o'clock
-    if (index + 1) mod s.width != 0:
-        if s.field[index + 1] == es: result.inc
-    if index + s.width < s.field.len and (index + 1) mod s.width != 0:
-        if s.field[index + s.width + 1] == es: result.inc
-    # 6 o'clock
-    if index + s.width < s.field.len:
-        if s.field[index + s.width] == es: result.inc
-    if index + s.width < s.field.len and index mod s.width != 0:
-        if s.field[index + s.width - 1] == es: result.inc
-    # 9 o'clock
-    if index mod s.width != 0:
-        if s.field[index - 1] == es: result.inc
-    if index > s.width and index mod s.width != 0:
-        if s.field[index - s.width - 1] == es: result.inc
+    proc lookup(x, y: int, es: var EState): bool =
+        if x < 0 or x >= s.width:
+            return false
+        if y < 0 or y >= s.height:
+            return false
+        es = s.field[y * s.width + x]
+        true
+    let
+        x = index mod s.width
+        y = index div s.width
+    for dx in [-1, 0, 1]:
+        for dy in [-1, 0, 1]:
+            if dx == 0 and dy == 0:
+                continue
+            var lookup_state: EState
+            if lookup(x + dx, y + dy, lookup_state):
+                if lookup_state == es: result.inc
 
 
 func applyRules(s: SimState): SimState =

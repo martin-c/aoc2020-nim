@@ -1,7 +1,7 @@
 ## Advent of Code 2020
 ## Solutions implemented in Nim Programming Language (www.nim-lang.org)
-## Day 14: Docking Data
-## https://adventofcode.com/2020/day/14
+## Day 16: Ticket Translation
+## https://adventofcode.com/2020/day/16
 ##
 ## Resources:
 ## Streams: https://nim-lang.org/docs/streams.html#15
@@ -18,7 +18,6 @@ import streams
 import strformat
 import strscans
 import strutils
-#import sugar
 import tables
 
 

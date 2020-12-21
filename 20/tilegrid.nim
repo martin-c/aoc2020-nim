@@ -18,7 +18,10 @@ const
     angles* = {0, 90, 180, 270}
 
 type
-    Pos* = tuple[x, y: int]
+    # An x,y coordinate pair
+    Point* = tuple[x, y: int]
+    # A x,y coordinate pair with rotation and flip state
+    Pos* = tuple[x, y, rot: int, hflip: bool]
 
     Tile* = object
         id*: int
@@ -38,13 +41,13 @@ func addAngle(a, b: int): int =
         result += 360
 
 
-func hash*(p: Pos): Hash =
+func hash*(p: Point): Hash =
     var h: Hash = 0
     h = h !& p.x !& p.y
     result = !$h
 
 
-iterator dirs(at: Pos): (int, int, int) =
+iterator dirs(at: Point): (int, int, int) =
     ## Iterate over the 4 valid positions relative to `pos`.
     ## Retur a tuple of x, y, and angle
     let d = @[ # neighbor positions
@@ -64,40 +67,70 @@ proc `$`*(tile: Tile): string =
     #    result.add line.join("") & "\n"
 
 
-proc `$`*(hs: HashSet[Pos]): string =
+proc `$`*(hs: HashSet[Point]): string =
     ## stringify a HashSet of points
     var s = newSeqOfCap[string](hs.len)
     for item in hs.items:
         s.add $item
-    "HashSet[Pos]: " & s.join(", ")
+    "HashSet[Point]: " & s.join(", ")
 
 
-func slice*(tile: Tile, at: Pos = (0, 0), angle: int = 0): seq[char] =
+func slice*(tile: Tile, at: Point = (0, 0), angle: int = 90): seq[char] =
     ## Take a slice of a tile with column (x), row (y) in `offset` and `angle` 0
-    ## (horizontal slice) or 90 (vertical slice).
-    assert angle in {0, 90}
+    ## (vertical slice) or 90 (horizontal slice).
+    assert angle in angles
     assert at.x < tile_width and at.y < tile_height
     result = case angle:
     of 0:
-        let f = at.y * tile_height
-        tile.data[f ..< f + tile_width]
-    of 90:
+        # column slice from bottom to top ↑
         var col = newSeqOfCap[char](tile_height)
         for i in (0 ..< tile_height):
             col.add tile.data[i * tile_width + at.x]
         col
+    of 90:
+        # row slice from left to right →
+        let f = at.y * tile_height
+        tile.data[f ..< f + tile_width]
+    of 180:
+        # column slice from top to bottom ↓
+        var
+            col = newSeqOfCap[char](tile_height)
+            i = tile_height - 1
+        while i >= 0:
+            col.add tile.data[i * tile_width + at.x]
+            dec i
+        col
+    of 270:
+        # row slice from right to left ←
+        let f = at.y * tile_height
+        var
+            row = newSeqOfCap[char](tile_width)
+            i = f + tile_width - 1
+        while i >= f:
+            row.add(tile.data[i])
+            dec i
+        row
     else:
         @[]
 
 
 func side*(tile: Tile, side: int): seq[char] =
-    ## return a string for the slice (side) of a tile
+    ## return a string for the slice (side) of a tile, side is absolute
+    ## relative to origin
     assert side in angles
     result = case side:
-        of 0: tile.slice()
-        of 180: tile.slice(at=(0, tile_height - 1))
-        of 90: tile.slice(at=(tile_width - 1, 0), angle=90)
-        of 270: tile.slice(angle=90)
+        of 0:
+            # top (counting right)
+            tile.slice(at=(0, tile_height - 1), angle=90)
+        of 90:
+            # right (counting up)
+            tile.slice(at=(tile_width - 1, 0), angle=0)
+        of 180:
+            # bottom (counting right)
+            tile.slice(angle=90)
+        of 270:
+            # left (counting up)
+            tile.slice(angle=0)
         else: @[]
 
 
@@ -122,58 +155,58 @@ iterator sides*(tile: Tile): (int, seq[char]) =
         yield (a, tile.side(a))
 
 
-proc insertTile*(group: var Group, tile: Tile, at: Pos) =
+proc insertTile*(group: var Group, tile: Tile, pos: Pos) =
     ## Insert a tile into grid at coordinate postion
-    assert at notin group.data.unzip[0]
-    if at.x < group.xsl.a: group.xsl.a = at.x
-    if at.x > group.xsl.b: group.xsl.b = at.x
-    if at.y < group.ysl.a: group.ysl.a = at.y
-    if at.y > group.ysl.b: group.ysl.b = at.y
-    group.data.add (at, tile)
+    assert pos notin group.data.unzip[0]
+    if pos.x < group.xsl.a: group.xsl.a = pos.x
+    if pos.x > group.xsl.b: group.xsl.b = pos.x
+    if pos.y < group.ysl.a: group.ysl.a = pos.y
+    if pos.y > group.ysl.b: group.ysl.b = pos.y
+    group.data.add (pos, tile)
 
 
-func tileAt(group: Group, at: Pos): Option[Tile] =
+func tileAt(group: Group, at: Point): Option[(Pos, Tile)] =
     ## get tile from group at position if it exists
     # debugEcho fmt"tileAt: at: {at}, xs: {group.xsl}, ys: {group.ysl}"
     if at.x < group.xsl.a or at.x > group.xsl.b or
         at.y < group.ysl.a or at.y > group.ysl.b:
-            return none(Tile)
-    let res = group.data.filterIt(it[0] == at)
+            return none((Pos, Tile))
+    let res = group.data.filterIt(it[0].x == at.x and it[0].y == at.y)
     debugEcho fmt"res: {res}"
     if res.len == 0:
-            return none(Tile)
-    some(res[0][1])
+            return none((Pos, Tile))
+    some(res[0])
 
 
-proc tryInsertAt*(group: var Group, tile: Tile, at: Pos): bool =
+proc tryInsertAt*(group: var Group, tile: Tile, pos: Pos): bool =
     ## Try to insert a tile into group at position. Return `true`
     ## if insert succeeds, `false` if it fails.
-    echo fmt"tryInsertAt: tile:{tile.id}, x:{at.x}, y:{at.y}"
+    echo fmt"tryInsertAt: tile:{tile.id}, x:{pos.x}, y:{pos.y}"
     if group.data.len == 0:
-        group.insertTile(tile, at)
+        group.insertTile(tile, pos)
         return true
-    for (x, y, a) in at.dirs:
-        let t = group.tileAt((x, y))
-        if t.isNone:
+    for (x, y, a) in (pos.x, pos.y).dirs:
+        let res = group.tileAt((x, y))
+        if res.isNone:
             # echo fmt"check {x}, {y}, {a}: no tile"
             continue
         # echo fmt"check {x}, {y}, {a}, tile: {t.get()}"
-        let fits = checkSide(tile, t.get(), a)
+        let fits = checkSide(tile, res.get()[1], a)
         if not fits:
             return false
-    group.insertTile(tile, at)
+    group.insertTile(tile, pos)
     return true
 
 
-func perimeter*(group: Group): HashSet[Pos] =
+func perimeter*(group: Group): HashSet[Point] =
     ## return a set of all the perimeter coordinates of a
     ## tile group. These are the positions which do not
     ## contain a tile but are adjacent to positions which do
     assert group.data.len > 0
-    var tiles_at = HashSet[Pos]()
-    for (at, tile) in group.data:
-        tiles_at.incl(at)
-        for (x, y, _) in at.dirs:
+    var tiles_at = HashSet[Point]()
+    for (pos, tile) in group.data:
+        tiles_at.incl((pos.x, pos.y))
+        for (x, y, _) in (pos.x, pos.y).dirs:
             result.incl((x, y))
     result = result - tiles_at
 
@@ -182,16 +215,18 @@ proc `$`*(gr: Group): string =
     result = &"(Group, xsl: {gr.xsl}, ysl: {gr.ysl})\n\n"
     var y = gr.ysl.b
     while (y >= gr.ysl.a):
-        dec y
         var lines = newSeq[string](tile_height + 1)
         for x in gr.xsl:
-            let t = gr.tileAt((x, y))
-            if t.isSome:
-                lines[0].add $t.get().id & "       "
+            let res = gr.tileAt((x, y))
+            if res.isSome:
+                let (pos, tile) = res.get()
+                let f = if pos.hflip: 'f' else: ' '
+                lines[0].add fmt"{tile.id:04} {pos.rot:03} {f} "
                 for i in (0 ..< tile_height):
-                    lines[i+1].add $t.get().slice((0, i)).join("") & " "
+                    lines[tile_height - i].add $tile.slice((0, i)).join("") & " "
             else:
                 for i in (0 ..< lines.len):
                     lines[i].add "           "
         for i in lines:
             result.add i & "\n"
+        dec y

@@ -14,7 +14,7 @@
 ## Nim Npeg: https://github.com/zevv/npeg
 
 
-#import npeg
+import algorithm
 import sets
 import os
 import options
@@ -51,6 +51,9 @@ proc parseInput(filename: string = input_filename): seq[Tile] =
         for line in strm.lines:
             if line.len == 0:
                 if tile.isSome:
+                    # tile is parsed up -> down and stored down -> up
+                    let parts = tile.get().data.distribute(tile_height)
+                    tile.get().data = parts.reversed.concat()
                     result.add(tile.get())
                     tile = none(Tile)
                 continue
@@ -63,8 +66,8 @@ proc parseInput(filename: string = input_filename): seq[Tile] =
             else:
                 tile.get().data.add(line)
         strm.close()
-        if tile.isSome:
-            result.add(tile.get())
+        # make sure all tiles have been added to results
+        assert tile.isNone
     else:
         echo fmt"input file {filename} does not exist"
 
@@ -75,14 +78,14 @@ proc align(tiles: seq[Tile]) =
         rem = tiles[1 .. ^1]
         match = true
 
-    assert group.tryInsertAt(tiles[0], (0, 0))
+    assert group.tryInsertAt(tiles[0], (0, 0, 0, false))
 
     echo "matching tiles without rotation"
     while (rem.len > 0 and match):
         block match_tile:
-            for pos in group.perimeter.items:
+            for point in group.perimeter.items:
                 for i in 0 ..< rem.len:
-                    if group.tryInsertAt(rem[i], pos):
+                    if group.tryInsertAt(rem[i], (point.x, point.y, 0, false)):
                         rem.delete(i, i)
                         match = true
                         break match_tile

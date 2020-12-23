@@ -78,18 +78,24 @@ proc align(tiles: seq[Tile]) =
         rem = tiles[1 .. ^1]
         match = true
 
-    assert group.tryInsertAt(tiles[0], (0, 0, 0, false))
-
-    echo "matching tiles without rotation"
+    #assert group.tryInsertAt(tiles[0], (0, 0, 0, false))
+    group.insertTile(tiles[1], (0, 0, 0, false))
+    group.insertTile(tiles[1], (1, 0, 0, true))
+    group.insertTile(tiles[1], (2, 0, 90, true))
+    group.insertTile(tiles[1], (0, -1, 90, false))
+    group.insertTile(tiles[1], (1, -1, 180, false))
+    group.insertTile(tiles[1], (2, -1, 270, false))
+    #[echo "matching tiles with rotation"
     while (rem.len > 0 and match):
         block match_tile:
             for point in group.perimeter.items:
                 for i in 0 ..< rem.len:
-                    if group.tryInsertAt(rem[i], (point.x, point.y, 0, false)):
-                        rem.delete(i, i)
-                        match = true
-                        break match_tile
-            match = false
+                    for a in angles:
+                        if group.tryInsertAt(rem[i], (point.x, point.y, a, false)):
+                            rem.delete(i, i)
+                            match = true
+                            break match_tile
+            match = false]#
 
     echo fmt"group: {group}"
     echo fmt"tiles remaining: {rem}"

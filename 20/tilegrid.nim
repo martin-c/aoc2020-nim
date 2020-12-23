@@ -75,34 +75,72 @@ proc `$`*(hs: HashSet[Point]): string =
     "HashSet[Point]: " & s.join(", ")
 
 
-func slice*(tile: Tile, at: Point = (0, 0), angle: int = 90): seq[char] =
-    ## Take a slice of a tile with column (x), row (y) in `offset` and `angle` 0
-    ## (vertical slice) or 90 (horizontal slice).
-    assert angle in angles
-    assert at.x < tile_width and at.y < tile_height
-    result = case angle:
+func slice*(tile: Tile, sangle: int = 90, offset: int = 90,
+        rot: int = 0, hflip: bool = false): seq[char] =
+    ## Take a slice of a tile with column (x), row (y) with x or y offset
+    ## `offset`, slice angle `angle` 0 (vertical slice) or 90
+    ## (horizontal slice), tile rotation angle `rot` and possible
+    ## horizontal flip `hflip`.
+    assert sangle in {0, 90}
+    assert rot in angles
+    assert offset < tile_width and offset < tile_height and offset >= 0
+    #var
+    #    d = addAngle(sangle, -rot)
+    #if hflip and sangle == 0:
+    #    d = addAngle(d, 180)
+
+    var (start, step, offset_step) = case rot:
     of 0:
-        # column slice from bottom to top ↑
-        var col = newSeqOfCap[char](tile_height)
-        for i in (0 ..< tile_height):
-            col.add tile.data[i * tile_width + at.x]
-        col
+        if sangle == 0:
+            (0, tile_width, 1)
+        else:
+            (0, 1, tile_width)
+    of 90:
+        if sangle == 0:
+            (tile_width - 1, -1, tile_height)
+        else:
+            (tile_width - 1, tile_width, -1)
+    of 180:
+        if sangle == 0:
+            (tile_width * tile_height - 1, tile_width * -1, -1)
+        else:
+            (tile_width * tile_height - 1, -1, tile_width * -1)
+    of 270:
+        if sangle == 0:
+            (tile_width * (tile_height - 1), 1, tile_width * -1)
+        else:
+            (tile_width * (tile_height - 1), tile_width * -1, 1)
+    else: (0, 0, 0)
+    # assume tile_width == tile_height
+    var
+        res = newSeqOfCap[char](tile_width)
+    for i in 0 ..< tile_width:
+        res.add(tile.data[start + i * step + offset * offset_step])
+    res
+
+    # transform the slice offset
+    #assert tile_width == tile_height
+    #const tile_size = tile_width
+    #[let
+        #osf = offset
+        osf = case d:
+            of 0: tile_size - offset - 1
+            of 90: offset
+            of 180: offset
+            of 270: tile_size - offset - 1
+            else: 0 # rotation not valid
+
+    result = case d:
+    # row (horizontal) slices
     of 90:
         # row slice from left to right →
-        let f = at.y * tile_height
+        let
+            #osf = tile_size - offset - 1
+            f = osf * tile_height
         tile.data[f ..< f + tile_width]
-    of 180:
-        # column slice from top to bottom ↓
-        var
-            col = newSeqOfCap[char](tile_height)
-            i = tile_height - 1
-        while i >= 0:
-            col.add tile.data[i * tile_width + at.x]
-            dec i
-        col
     of 270:
         # row slice from right to left ←
-        let f = at.y * tile_height
+        let f = osf * tile_height
         var
             row = newSeqOfCap[char](tile_width)
             i = f + tile_width - 1
@@ -110,8 +148,25 @@ func slice*(tile: Tile, at: Point = (0, 0), angle: int = 90): seq[char] =
             row.add(tile.data[i])
             dec i
         row
+
+    # column slices
+    of 0:
+        # column slice from bottom to top ↑
+        var col = newSeqOfCap[char](tile_height)
+        for i in (0 ..< tile_height):
+            col.add tile.data[i * tile_width + osf]
+        col
+    of 180:
+        # column slice from top to bottom ↓
+        var
+            col = newSeqOfCap[char](tile_height)
+            i = tile_height - 1
+        while i >= 0:
+            col.add tile.data[i * tile_width + osf]
+            dec i
+        col
     else:
-        @[]
+        @[]]#
 
 
 func side*(tile: Tile, side: int): seq[char] =
@@ -121,16 +176,16 @@ func side*(tile: Tile, side: int): seq[char] =
     result = case side:
         of 0:
             # top (counting right)
-            tile.slice(at=(0, tile_height - 1), angle=90)
+            tile.slice(sangle=90, offset=tile_height - 1)
         of 90:
             # right (counting up)
-            tile.slice(at=(tile_width - 1, 0), angle=0)
+            tile.slice(sangle=0, offset=tile_width - 1)
         of 180:
             # bottom (counting right)
-            tile.slice(angle=90)
+            tile.slice(sangle=90, offset=0)
         of 270:
             # left (counting up)
-            tile.slice(angle=0)
+            tile.slice(sangle=0, offset=0)
         else: @[]
 
 
@@ -223,7 +278,8 @@ proc `$`*(gr: Group): string =
                 let f = if pos.hflip: 'f' else: ' '
                 lines[0].add fmt"{tile.id:04} {pos.rot:03} {f} "
                 for i in (0 ..< tile_height):
-                    lines[tile_height - i].add $tile.slice((0, i)).join("") & " "
+                    let s = tile.slice(sangle=90, offset=i, rot=pos.rot, hflip=pos.hflip)
+                    lines[tile_height - i].add $s.join("") & " "
             else:
                 for i in (0 ..< lines.len):
                     lines[i].add "           "

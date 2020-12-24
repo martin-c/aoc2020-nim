@@ -29,7 +29,7 @@ import tilegrid
 
 const
     input_url = "https://adventofcode.com/2020/day/20/input"
-    input_filename = "input_test_1.txt"
+    input_filename = "input.txt"
 
 
 proc getInput(url: string = input_url, filename: string = input_filename) =
@@ -72,38 +72,38 @@ proc parseInput(filename: string = input_filename): seq[Tile] =
         echo fmt"input file {filename} does not exist"
 
 
-proc align(tiles: seq[Tile]) =
+proc align(tiles: seq[Tile]): int =
     var
         group = Group(data: @[])
         rem = tiles[1 .. ^1]
         match = true
 
-    #assert group.tryInsertAt(tiles[0], (0, 0, 0, false))
-    group.insertTile(tiles[1], (0, 0, 0, false))
-    group.insertTile(tiles[1], (1, 0, 0, true))
-    group.insertTile(tiles[1], (2, 0, 90, true))
-    group.insertTile(tiles[1], (0, -1, 90, false))
-    group.insertTile(tiles[1], (1, -1, 180, false))
-    group.insertTile(tiles[1], (2, -1, 270, false))
-    #[echo "matching tiles with rotation"
+    echo "matching tiles with rotation and flip"
+    assert group.tryInsertAt(tiles[0], (0, 0, 0, false))
     while (rem.len > 0 and match):
         block match_tile:
             for point in group.perimeter.items:
                 for i in 0 ..< rem.len:
-                    for a in angles:
-                        if group.tryInsertAt(rem[i], (point.x, point.y, a, false)):
-                            rem.delete(i, i)
-                            match = true
-                            break match_tile
-            match = false]#
+                    for hf in {false, true}:
+                        for a in angles:
+                            if group.tryInsertAt(rem[i], (point.x, point.y, a, hf)):
+                                rem.delete(i, i)
+                                match = true
+                                break match_tile
+            match = false
 
     echo fmt"group: {group}"
     echo fmt"tiles remaining: {rem}"
+    result = 1
+    for pt in @[(group.xsl.a, group.ysl.a), (group.xsl.b, group.ysl.a),
+            (group.xsl.a, group.ysl.b), (group.xsl.b, group.ysl.b)]:
+        let res = group.tileAt(pt)
+        let (_, tile) = res.get()
+        echo fmt"corner {pt}, tile {tile}"
+        result *= tile.id
 
 
 if isMainModule:
     getInput()
     let tiles = parseInput()
-    #for tile in tiles:
-    #    echo tile
-    tiles.align()
+    echo "product of edge ids: ", tiles.align()

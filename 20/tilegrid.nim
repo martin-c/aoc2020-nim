@@ -9,6 +9,7 @@ import sequtils
 import strformat
 import strutils
 import sets
+import tables
 #import sugar
 
 
@@ -84,33 +85,55 @@ func slice*(tile: Tile, sangle: int = 90, offset: int = 90,
     assert sangle in {0, 90}
     assert rot in angles
     assert offset < tile_width and offset < tile_height and offset >= 0
-    #var
-    #    d = addAngle(sangle, -rot)
-    #if hflip and sangle == 0:
-    #    d = addAngle(d, 180)
 
-    var (start, step, offset_step) = case rot:
-    of 0:
-        if sangle == 0:
-            (0, tile_width, 1)
-        else:
-            (0, 1, tile_width)
-    of 90:
-        if sangle == 0:
-            (tile_width - 1, -1, tile_height)
-        else:
-            (tile_width - 1, tile_width, -1)
-    of 180:
-        if sangle == 0:
-            (tile_width * tile_height - 1, tile_width * -1, -1)
-        else:
-            (tile_width * tile_height - 1, -1, tile_width * -1)
-    of 270:
-        if sangle == 0:
-            (tile_width * (tile_height - 1), 1, tile_width * -1)
-        else:
-            (tile_width * (tile_height - 1), tile_width * -1, 1)
-    else: (0, 0, 0)
+    # start, step, offset_step for each combination of rotation, slice angle, and hflip
+    let lut = {
+        # rotation angle
+        0: {
+            # slice angle
+            0: {
+                # hflip state
+                false: (0, tile_width, 1),
+                true: (tile_width * (tile_height - 1), tile_width * -1, 1)
+            }.newTable,
+            90: {
+                false: (0, 1, tile_width),
+                true: (tile_width * (tile_height - 1), 1, tile_width * -1)
+            }.newTable,
+        }.newTable,
+        90: {
+            0: {
+                false: (tile_width - 1, -1, tile_height),
+                true: (0, 1, tile_width),
+            }.newTable,
+            90: {
+                false: (tile_width - 1, tile_width, -1),
+                true: (0, tile_width, 1),
+            }.newTable,
+        }.newTable,
+        180: {
+            0: {
+                false: (tile_width * tile_height - 1, tile_width * -1, -1),
+                true: (tile_width - 1, tile_width, -1)
+            }.newTable,
+            90: {
+                false: (tile_width * tile_height - 1, -1, tile_width * -1),
+                true: (tile_width - 1, -1, tile_width)
+            }.newTable,
+        }.newTable,
+        270: {
+            0: {
+                false: (tile_width * (tile_height - 1), 1, tile_width * -1),
+                true: (tile_width * tile_height - 1, -1, tile_width * -1)
+            }.newTable,
+            90: {
+                false: (tile_width * (tile_height - 1), tile_width * -1, 1),
+                true: (tile_width * tile_height - 1, tile_width * -1, -1)
+            }.newTable
+        }.newTable
+    }.newTable
+    var
+        (start, step, offset_step) = lut[rot][sangle][hflip]
     # assume tile_width == tile_height
     var
         res = newSeqOfCap[char](tile_width)
@@ -118,89 +141,41 @@ func slice*(tile: Tile, sangle: int = 90, offset: int = 90,
         res.add(tile.data[start + i * step + offset * offset_step])
     res
 
-    # transform the slice offset
-    #assert tile_width == tile_height
-    #const tile_size = tile_width
-    #[let
-        #osf = offset
-        osf = case d:
-            of 0: tile_size - offset - 1
-            of 90: offset
-            of 180: offset
-            of 270: tile_size - offset - 1
-            else: 0 # rotation not valid
 
-    result = case d:
-    # row (horizontal) slices
-    of 90:
-        # row slice from left to right →
-        let
-            #osf = tile_size - offset - 1
-            f = osf * tile_height
-        tile.data[f ..< f + tile_width]
-    of 270:
-        # row slice from right to left ←
-        let f = osf * tile_height
-        var
-            row = newSeqOfCap[char](tile_width)
-            i = f + tile_width - 1
-        while i >= f:
-            row.add(tile.data[i])
-            dec i
-        row
-
-    # column slices
-    of 0:
-        # column slice from bottom to top ↑
-        var col = newSeqOfCap[char](tile_height)
-        for i in (0 ..< tile_height):
-            col.add tile.data[i * tile_width + osf]
-        col
-    of 180:
-        # column slice from top to bottom ↓
-        var
-            col = newSeqOfCap[char](tile_height)
-            i = tile_height - 1
-        while i >= 0:
-            col.add tile.data[i * tile_width + osf]
-            dec i
-        col
-    else:
-        @[]]#
-
-
-func side*(tile: Tile, side: int): seq[char] =
+func side*(tile: Tile, side: int, rot: int = 0, hflip: bool = false): seq[char] =
     ## return a string for the slice (side) of a tile, side is absolute
     ## relative to origin
     assert side in angles
     result = case side:
         of 0:
             # top (counting right)
-            tile.slice(sangle=90, offset=tile_height - 1)
+            tile.slice(sangle=90, offset=tile_height - 1, rot, hflip)
         of 90:
             # right (counting up)
-            tile.slice(sangle=0, offset=tile_width - 1)
+            tile.slice(sangle=0, offset=tile_width - 1, rot, hflip)
         of 180:
             # bottom (counting right)
-            tile.slice(sangle=90, offset=0)
+            tile.slice(sangle=90, offset=0, rot, hflip)
         of 270:
             # left (counting up)
-            tile.slice(sangle=0, offset=0)
+            tile.slice(sangle=0, offset=0, rot, hflip)
         else: @[]
 
 
-func checkSide(a, b: Tile, angle: int = 0): bool =
+func checkSide(a, b: (Tile, int, bool), angle: int = 0): bool =
     ## Check a single side of each adjacent tiles
     ## Angle is the angle of the virtual vector from tile a to tile b
     ## For example, if tile b is directly to the right of tile a then
     ## angle is 90. If tile b is below tile a then angle is 180.
     assert angle in angles
-    assert a.id != 0
-    if b.id == 0:
+    let
+        (tilea, rota, hflipa) = a
+        (tileb, rotb, hflipb) = b
+    assert tilea.id != 0
+    if tileb.id == 0:
         # empty tile
-        # debugEcho fmt"checkSide a:{a}, b:{b}, angle: {angle}"
         return true
-    a.side(angle) == b.side(angle.addAngle(180))
+    tilea.side(angle, rota, hflipa) == tileb.side(angle.addAngle(180), rotb, hflipb)
 
 
 iterator sides*(tile: Tile): (int, seq[char]) =
@@ -220,14 +195,14 @@ proc insertTile*(group: var Group, tile: Tile, pos: Pos) =
     group.data.add (pos, tile)
 
 
-func tileAt(group: Group, at: Point): Option[(Pos, Tile)] =
+func tileAt*(group: Group, at: Point): Option[(Pos, Tile)] =
     ## get tile from group at position if it exists
     # debugEcho fmt"tileAt: at: {at}, xs: {group.xsl}, ys: {group.ysl}"
     if at.x < group.xsl.a or at.x > group.xsl.b or
         at.y < group.ysl.a or at.y > group.ysl.b:
             return none((Pos, Tile))
     let res = group.data.filterIt(it[0].x == at.x and it[0].y == at.y)
-    debugEcho fmt"res: {res}"
+    # debugEcho fmt"res: {res}"
     if res.len == 0:
             return none((Pos, Tile))
     some(res[0])
@@ -236,7 +211,7 @@ func tileAt(group: Group, at: Point): Option[(Pos, Tile)] =
 proc tryInsertAt*(group: var Group, tile: Tile, pos: Pos): bool =
     ## Try to insert a tile into group at position. Return `true`
     ## if insert succeeds, `false` if it fails.
-    echo fmt"tryInsertAt: tile:{tile.id}, x:{pos.x}, y:{pos.y}"
+    # echo fmt"tryInsertAt: tile:{tile.id}, x:{pos.x}, y:{pos.y}"
     if group.data.len == 0:
         group.insertTile(tile, pos)
         return true
@@ -245,8 +220,10 @@ proc tryInsertAt*(group: var Group, tile: Tile, pos: Pos): bool =
         if res.isNone:
             # echo fmt"check {x}, {y}, {a}: no tile"
             continue
-        # echo fmt"check {x}, {y}, {a}, tile: {t.get()}"
-        let fits = checkSide(tile, res.get()[1], a)
+        # echo fmt"check {x}, {y}, {a}, tile: {t.get()[1]}"
+        let
+            (posb, tileb) = res.get()
+            fits = checkSide((tile, pos.rot, pos.hflip), (tileb, posb.rot, posb.hflip), a)
         if not fits:
             return false
     group.insertTile(tile, pos)
